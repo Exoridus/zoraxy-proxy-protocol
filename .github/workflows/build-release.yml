@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     tags:
-      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+      - '*.*.*'  # Triggers on semantic version tags like 1.0.0, 1.2.3, etc.
   pull_request:
     branches: [ main ]
   workflow_dispatch:  # Allow manual trigger
@@ -149,7 +149,7 @@ jobs:
           else
             # Generate release notes from template
             current_tag="${{ github.ref_name }}"
-            
+
             # Get previous tag, handling beta releases
             previous_tag=$(git describe --tags --abbrev=0 HEAD~)
             if [[ $previous_tag == *beta* ]]; then
@@ -159,17 +159,17 @@ jobs:
                 previous_tag=$(git describe --tags --abbrev=0 --exclude="*beta*" HEAD~)
               fi
             fi
-            
+
             # Get project info
             project_name=$(echo "${{ github.repository }}" | cut -d'/' -f2)
             release_date=$(git log -1 --date=short --format="%ad")
             repo_url="https://github.com/${{ github.repository }}"
-            
+
             # Generate grouped commit list for gitmoji
             if [ "$previous_tag" != "$current_tag" ]; then
               # Get all commits and group them by emoji type
               all_commits=$(git log --pretty="format:%s|%h|%H" --no-merges "${previous_tag}..HEAD")
-              
+
               # Initialize sections
               features=""
               fixes=""
@@ -179,7 +179,7 @@ jobs:
               tests=""
               chores=""
               others=""
-              
+
               # Process each commit and categorize by gitmoji
               while IFS='|' read -r msg hash full_hash; do
                 commit_link="[\`$hash\`]($repo_url/commit/$full_hash)"
@@ -201,7 +201,7 @@ jobs:
                   others="$others- $msg ($commit_link)\n"
                 fi
               done <<< "$all_commits"
-              
+
               # Build commit list with sections
               commit_list=""
               [ -n "$features" ] && commit_list="$commit_list### ✨ Features\n\n$features\n"
@@ -212,7 +212,7 @@ jobs:
               [ -n "$docs" ] && commit_list="$commit_list### 📝 Documentation\n\n$docs\n"
               [ -n "$chores" ] && commit_list="$commit_list### 🔧 Maintenance\n\n$chores\n"
               [ -n "$others" ] && commit_list="$commit_list### 🔀 Other Changes\n\n$others\n"
-              
+
               # If no categorized commits, show all
               if [ -z "$commit_list" ]; then
                 commit_list=$(git log --pretty="format:- %s ([\`%h\`]($repo_url/commit/%H))" --no-merges "${previous_tag}..HEAD")
@@ -220,7 +220,7 @@ jobs:
             else
               commit_list="- Initial release"
             fi
-            
+
             # Use template and replace variables
             cp .github/templates/release-notes.md release-notes.txt
             sed -i "s|\${PROJECT_NAME}|$project_name|g" release-notes.txt
@@ -229,7 +229,7 @@ jobs:
             sed -i "s|\${RELEASE_DATE}|$release_date|g" release-notes.txt
             sed -i "s|\${REPO_URL}|$repo_url|g" release-notes.txt
             sed -i "s|\${GO_VERSION}|${{ env.GO_VERSION }}|g" release-notes.txt
-            
+
             # Replace commit list (handle multiline)
             echo "$commit_list" > commits.tmp
             sed -i "/\${COMMIT_LIST}/r commits.tmp" release-notes.txt

@@ -55,24 +55,24 @@
             <h1>Proxy Protocol Plugin</h1>
             <p>HAProxy Compatible Proxy Protocol Support for Zoraxy</p>
         </div>
-        
+
         <div class="status" id="status">
             Status: Loading...
         </div>
-        
+
         <div class="config-section">
             <h3>Configuration</h3>
             <p>This plugin adds support for the Proxy Protocol, which allows preserving client connection information when traffic passes through a Layer 4 proxy like HAProxy.</p>
-            
+
             <div>
                 <label>
                     <input type="checkbox" id="enabledCheckbox"> Enable Proxy Protocol Support
                 </label>
             </div>
-            
+
             <button onclick="toggleProxyProtocol()">Apply Changes</button>
         </div>
-        
+
         <div class="config-section">
             <h3>About</h3>
             <p>The Proxy Protocol is used to convey connection information for connections proxied through a proxy or load balancer. It supports both version 1 (text-based) and version 2 (binary) of the protocol.</p>
@@ -103,8 +103,7 @@
             fetch('/ui/api/toggle', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-Zoraxy-Csrf': '{{.csrfToken}}'
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ enabled: enabled })
             })
@@ -118,6 +117,7 @@
                 }
             })
             .catch(error => {
+                console.error('Error:', error);
                 alert('Error updating configuration');
             });
         }
@@ -126,4 +126,4 @@
         loadStatus();
     </script>
 </body>
-</html> 
+</html>
