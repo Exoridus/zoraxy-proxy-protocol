@@ -150,13 +150,13 @@ jobs:
             # Generate release notes from template
             current_tag="${{ github.ref_name }}"
 
-            # Get previous tag, handling beta releases
-            previous_tag=$(git describe --tags --abbrev=0 HEAD~)
-            if [[ $previous_tag == *beta* ]]; then
+            # Get previous tag, handling beta releases and first release
+            previous_tag=$(git describe --tags --abbrev=0 HEAD~ 2>/dev/null || echo "")
+            if [[ -n "$previous_tag" && $previous_tag == *beta* ]]; then
               if [[ $current_tag == *beta* ]]; then
-                previous_tag=$(git describe --tags --abbrev=0 HEAD~)
+                previous_tag=$(git describe --tags --abbrev=0 HEAD~ 2>/dev/null || echo "")
               else
-                previous_tag=$(git describe --tags --abbrev=0 --exclude="*beta*" HEAD~)
+                previous_tag=$(git describe --tags --abbrev=0 --exclude="*beta*" HEAD~ 2>/dev/null || echo "")
               fi
             fi
 
@@ -166,7 +166,7 @@ jobs:
             repo_url="https://github.com/${{ github.repository }}"
 
             # Generate grouped commit list for gitmoji
-            if [ "$previous_tag" != "$current_tag" ]; then
+            if [ -n "$previous_tag" ] && [ "$previous_tag" != "$current_tag" ]; then
               # Get all commits and group them by emoji type
               all_commits=$(git log --pretty="format:%s|%h|%H" --no-merges "${previous_tag}..HEAD")
 
@@ -225,7 +225,14 @@ jobs:
             cp .github/templates/release-notes.md release-notes.txt
             sed -i "s|\${PROJECT_NAME}|$project_name|g" release-notes.txt
             sed -i "s|\${CURRENT_TAG}|$current_tag|g" release-notes.txt
-            sed -i "s|\${PREVIOUS_TAG}|$previous_tag|g" release-notes.txt
+
+            # Handle changelog link based on whether we have a previous tag
+            if [ -n "$previous_tag" ]; then
+              sed -i "s|\${REPO_URL}/compare/\${PREVIOUS_TAG}...\${CURRENT_TAG}|$repo_url/compare/$previous_tag...$current_tag|g" release-notes.txt
+            else
+              sed -i "s|\\[Full Changelog\\](\${REPO_URL}/compare/\${PREVIOUS_TAG}...\${CURRENT_TAG}) \\| ||g" release-notes.txt
+            fi
+
             sed -i "s|\${RELEASE_DATE}|$release_date|g" release-notes.txt
             sed -i "s|\${REPO_URL}|$repo_url|g" release-notes.txt
             sed -i "s|\${GO_VERSION}|${{ env.GO_VERSION }}|g" release-notes.txt
