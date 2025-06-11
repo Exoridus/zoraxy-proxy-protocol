@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"sync"
 
-	plugin "plugins.zoraxy.aroz.org/zoraxy/proxy-protocol/mod/zoraxy_plugin"
+	plugin "go.codexo.de/exoridus/zoraxy-proxy-protocol/mod/zoraxy_plugin"
 )
 
 const (
