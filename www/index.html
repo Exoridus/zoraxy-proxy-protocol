@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy Protocol Plugin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .config-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Proxy Protocol Plugin</h1>
+            <p>HAProxy Compatible Proxy Protocol Support for Zoraxy</p>
+        </div>
+        
+        <div class="status" id="status">
+            Status: Loading...
+        </div>
+        
+        <div class="config-section">
+            <h3>Configuration</h3>
+            <p>This plugin adds support for the Proxy Protocol, which allows preserving client connection information when traffic passes through a Layer 4 proxy like HAProxy.</p>
+            
+            <div>
+                <label>
+                    <input type="checkbox" id="enabledCheckbox"> Enable Proxy Protocol Support
+                </label>
+            </div>
+            
+            <button onclick="toggleProxyProtocol()">Apply Changes</button>
+        </div>
+        
+        <div class="config-section">
+            <h3>About</h3>
+            <p>The Proxy Protocol is used to convey connection information for connections proxied through a proxy or load balancer. It supports both version 1 (text-based) and version 2 (binary) of the protocol.</p>
+            <p>When enabled, this plugin will:</p>
+            <ul>
+                <li>Detect incoming Proxy Protocol headers</li>
+                <li>Extract original client IP and port information</li>
+                <li>Set appropriate X-Forwarded-For and X-Real-IP headers</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function loadStatus() {
+            fetch('/ui/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status').textContent = `Status: ${data.status}`;
+                    document.getElementById('enabledCheckbox').checked = data.enabled;
+                })
+                .catch(error => {
+                    document.getElementById('status').textContent = 'Status: Error loading status';
+                });
+        }
+
+        function toggleProxyProtocol() {
+            const enabled = document.getElementById('enabledCheckbox').checked;
+            fetch('/ui/api/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Zoraxy-Csrf': '{{.csrfToken}}'
+                },
+                body: JSON.stringify({ enabled: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.result === 'success') {
+                    loadStatus();
+                    alert('Configuration updated successfully');
+                } else {
+                    alert('Error updating configuration');
+                }
+            })
+            .catch(error => {
+                alert('Error updating configuration');
+            });
+        }
+
+        // Load initial status
+        loadStatus();
+    </script>
+</body>
+</html> 

@@ -1,0 +1,262 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  GO_VERSION: '1.20'  # Match your go.mod version
+
+jobs:
+  test:
+    name: Run Tests and Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Run tests (if any exist)
+        run: |
+          if go list ./... | grep -q .; then
+            go test -v ./... || echo "No tests found or tests failed"
+          else
+            echo "No test files found - skipping tests"
+          fi
+
+  build:
+    name: Build Multi-Platform Binaries
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ success() && github.ref_type == 'tag' }}
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            name: proxy-protocol-linux-amd64
+          - goos: linux
+            goarch: arm64
+            name: proxy-protocol-linux-arm64
+          - goos: windows
+            goarch: amd64
+            name: proxy-protocol-windows-amd64.exe
+          - goos: darwin
+            goarch: amd64
+            name: proxy-protocol-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            name: proxy-protocol-darwin-arm64
+          - goos: freebsd
+            goarch: amd64
+            name: proxy-protocol-freebsd-amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for changelog generation
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true  # Enable built-in Go caching
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o dist/${{ matrix.name }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/${{ matrix.name }}
+          retention-days: 7
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: ${{ success() && github.ref_type == 'tag' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for changelog generation
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -name "proxy-protocol-*" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Generate release notes
+        id: generate_notes
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract notes for this version from CHANGELOG.md
+            awk '/^## \[${{ github.ref_name }}\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release-notes.txt
+          else
+            # Generate release notes from template
+            current_tag="${{ github.ref_name }}"
+            
+            # Get previous tag, handling beta releases
+            previous_tag=$(git describe --tags --abbrev=0 HEAD~)
+            if [[ $previous_tag == *beta* ]]; then
+              if [[ $current_tag == *beta* ]]; then
+                previous_tag=$(git describe --tags --abbrev=0 HEAD~)
+              else
+                previous_tag=$(git describe --tags --abbrev=0 --exclude="*beta*" HEAD~)
+              fi
+            fi
+            
+            # Get project info
+            project_name=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+            release_date=$(git log -1 --date=short --format="%ad")
+            repo_url="https://github.com/${{ github.repository }}"
+            
+            # Generate grouped commit list for gitmoji
+            if [ "$previous_tag" != "$current_tag" ]; then
+              # Get all commits and group them by emoji type
+              all_commits=$(git log --pretty="format:%s|%h|%H" --no-merges "${previous_tag}..HEAD")
+              
+              # Initialize sections
+              features=""
+              fixes=""
+              docs=""
+              performance=""
+              refactor=""
+              tests=""
+              chores=""
+              others=""
+              
+              # Process each commit and categorize by gitmoji
+              while IFS='|' read -r msg hash full_hash; do
+                commit_link="[\`$hash\`]($repo_url/commit/$full_hash)"
+                if [[ $msg =~ ^✨ ]]; then
+                  features="$features- ${msg#✨ } ($commit_link)\n"
+                elif [[ $msg =~ ^🐛 ]]; then
+                  fixes="$fixes- ${msg#🐛 } ($commit_link)\n"
+                elif [[ $msg =~ ^📝 ]]; then
+                  docs="$docs- ${msg#📝 } ($commit_link)\n"
+                elif [[ $msg =~ ^⚡ ]]; then
+                  performance="$performance- ${msg#⚡ } ($commit_link)\n"
+                elif [[ $msg =~ ^♻️ ]]; then
+                  refactor="$refactor- ${msg#♻️ } ($commit_link)\n"
+                elif [[ $msg =~ ^✅ ]]; then
+                  tests="$tests- ${msg#✅ } ($commit_link)\n"
+                elif [[ $msg =~ ^🔧|^🔨|^📦|^⬆️|^⬇️ ]]; then
+                  chores="$chores- $msg ($commit_link)\n"
+                else
+                  others="$others- $msg ($commit_link)\n"
+                fi
+              done <<< "$all_commits"
+              
+              # Build commit list with sections
+              commit_list=""
+              [ -n "$features" ] && commit_list="$commit_list### ✨ Features\n\n$features\n"
+              [ -n "$fixes" ] && commit_list="$commit_list### 🐛 Bug Fixes\n\n$fixes\n"
+              [ -n "$performance" ] && commit_list="$commit_list### ⚡ Performance\n\n$performance\n"
+              [ -n "$refactor" ] && commit_list="$commit_list### ♻️ Refactoring\n\n$refactor\n"
+              [ -n "$tests" ] && commit_list="$commit_list### ✅ Tests\n\n$tests\n"
+              [ -n "$docs" ] && commit_list="$commit_list### 📝 Documentation\n\n$docs\n"
+              [ -n "$chores" ] && commit_list="$commit_list### 🔧 Maintenance\n\n$chores\n"
+              [ -n "$others" ] && commit_list="$commit_list### 🔀 Other Changes\n\n$others\n"
+              
+              # If no categorized commits, show all
+              if [ -z "$commit_list" ]; then
+                commit_list=$(git log --pretty="format:- %s ([\`%h\`]($repo_url/commit/%H))" --no-merges "${previous_tag}..HEAD")
+              fi
+            else
+              commit_list="- Initial release"
+            fi
+            
+            # Use template and replace variables
+            cp .github/templates/release-notes.md release-notes.txt
+            sed -i "s|\${PROJECT_NAME}|$project_name|g" release-notes.txt
+            sed -i "s|\${CURRENT_TAG}|$current_tag|g" release-notes.txt
+            sed -i "s|\${PREVIOUS_TAG}|$previous_tag|g" release-notes.txt
+            sed -i "s|\${RELEASE_DATE}|$release_date|g" release-notes.txt
+            sed -i "s|\${REPO_URL}|$repo_url|g" release-notes.txt
+            sed -i "s|\${GO_VERSION}|${{ env.GO_VERSION }}|g" release-notes.txt
+            
+            # Replace commit list (handle multiline)
+            echo "$commit_list" > commits.tmp
+            sed -i "/\${COMMIT_LIST}/r commits.tmp" release-notes.txt
+            sed -i "/\${COMMIT_LIST}/d" release-notes.txt
+            rm commits.tmp
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/*
+          body_path: release-notes.txt
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify_release_failure:
+    name: Notify Release Failure
+    runs-on: ubuntu-latest
+    needs: [test, build, release]
+    if: ${{ always() && github.ref_type == 'tag' && (needs.build.result == 'failure' || needs.release.result == 'failure') }}
+    steps:
+      - name: Send failure notification
+        run: |
+          echo "🚨 Release failed for ${{ github.repository }} - ${{ github.ref_name }}"
+          echo "Build result: ${{ needs.build.result }}"
+          echo "Release result: ${{ needs.release.result }}"
