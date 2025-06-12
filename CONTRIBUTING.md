@@ -148,10 +148,10 @@ git push origin feature-name
 
 2. **Create pull request** and get it merged
 
-3. **Tag release from main branch:**
+3. **Tag release from master branch:**
 ```bash
-git checkout main
-git pull origin main
+git checkout master
+git pull origin master
 git tag 1.0.1
 git push origin 1.0.1
 ```

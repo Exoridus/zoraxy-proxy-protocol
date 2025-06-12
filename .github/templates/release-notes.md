@@ -10,8 +10,15 @@ This release contains pre-built binaries for multiple platforms:
 ## 🔧 Installation
 
 1. Download the appropriate binary for your platform
-2. Make it executable: `chmod +x proxy-protocol-*`
-3. Follow the setup instructions in the [README](${REPO_URL}/blob/main/README.md)
+2. Go to your Zoraxy installation directory (where the `zoraxy` executable is located)
+3. Create directory: `mkdir -p plugins/proxy-protocol`
+4. Copy binary: `cp proxy-protocol-* plugins/proxy-protocol/proxy-protocol`
+5. Make executable (Linux/macOS): `chmod +x plugins/proxy-protocol/proxy-protocol`
+6. Restart Zoraxy and configure via **Plugins** → **Proxy Protocol**
+
+> **Path:** `{zoraxy-directory}/plugins/proxy-protocol/proxy-protocol`
+
+For detailed instructions, see the [README](${REPO_URL}/blob/master/README.md)
 
 ## 🔐 Verification
 

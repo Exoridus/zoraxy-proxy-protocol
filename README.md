@@ -16,10 +16,25 @@ A Zoraxy plugin that adds support for the Proxy Protocol (HAProxy compatible), p
 ### From GitHub Releases (Recommended)
 
 1. Download the binary for your platform from [releases](https://github.com/Exoridus/zoraxy-proxy-protocol/releases)
-2. Create plugin directory: `mkdir -p plugins/proxy-protocol`
-3. Copy binary: `cp proxy-protocol plugins/proxy-protocol/`
-4. Restart Zoraxy
-5. Configure through the Zoraxy web interface
+2. Go to your Zoraxy installation directory (where the `zoraxy` executable is located)
+3. Create the directory: `mkdir -p plugins/proxy-protocol`
+4. Copy and rename the binary: `cp proxy-protocol-* plugins/proxy-protocol/proxy-protocol`
+5. Make it executable (Linux/macOS): `chmod +x plugins/proxy-protocol/proxy-protocol`
+6. Restart Zoraxy and configure via **Plugins** → **Proxy Protocol**
+
+> **Note:** Place the executable at `{zoraxy-directory}/plugins/proxy-protocol/proxy-protocol`
+
+### Directory Structure
+
+After installation, your Zoraxy directory will look like this:
+```
+/path/to/zoraxy/
+├── zoraxy                ← Main Zoraxy executable
+├── plugins/
+│   └── proxy-protocol/
+│       └── proxy-protocol ← Plugin executable goes here
+└── ... (other files)
+```
 
 ### From Source
 
@@ -27,6 +42,7 @@ A Zoraxy plugin that adds support for the Proxy Protocol (HAProxy compatible), p
 git clone https://github.com/Exoridus/zoraxy-proxy-protocol.git
 cd zoraxy-proxy-protocol
 make build-linux  # or make build for current platform
+# Then follow the installation steps above
 ```
 
 ## 📖 How It Works
@@ -120,9 +136,10 @@ Enable "Proxy Protocol v2" in the target group settings.
 ## 🐛 Troubleshooting
 
 ### Plugin Not Loading
-- Verify binary permissions: `chmod +x proxy-protocol`
+- Check the binary is at: `{zoraxy-directory}/plugins/proxy-protocol/proxy-protocol`
+- Verify binary permissions: `chmod +x plugins/proxy-protocol/proxy-protocol`
 - Check Zoraxy logs for error messages
-- Ensure binary name matches directory name
+- Ensure binary and directory are both named `proxy-protocol`
 
 ### Proxy Protocol Not Working
 - Confirm upstream proxy sends Proxy Protocol headers

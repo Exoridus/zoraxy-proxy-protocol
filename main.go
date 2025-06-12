@@ -93,9 +93,9 @@ func main() {
 	http.HandleFunc("/proxy_protocol_sniff", handleProxyProtocolSniff)
 	http.HandleFunc("/proxy_protocol_handler", handleProxyProtocolIngress)
 
-	// Register UI API endpoints
-	http.HandleFunc("/ui/api/status", handleAPIStatus)
-	http.HandleFunc("/ui/api/toggle", handleAPIToggle)
+	// Register UI API endpoints (relative to plugin UI path)
+	http.HandleFunc(UI_PATH+"/api/status", handleAPIStatus)
+	http.HandleFunc(UI_PATH+"/api/toggle", handleAPIToggle)
 
 	fmt.Println("Proxy Protocol Plugin started at http://127.0.0.1:" + strconv.Itoa(runtimeCfg.Port))
 	err = http.ListenAndServe("127.0.0.1:"+strconv.Itoa(runtimeCfg.Port), nil)
@@ -106,6 +106,8 @@ func main() {
 
 // API Handlers
 func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("API Status request: %s %s\n", r.Method, r.URL.Path)
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -127,10 +129,20 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		fmt.Printf("Error encoding JSON response: %v\n", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Status response sent: %+v\n", response)
 }
 
 func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("API Toggle request: %s %s\n", r.Method, r.URL.Path)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -138,9 +150,12 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 
 	var req ToggleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		fmt.Printf("Error decoding JSON: %v\n", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
+
+	fmt.Printf("Toggle request received: enabled=%t\n", req.Enabled)
 
 	config.mu.Lock()
 	config.Enabled = req.Enabled
@@ -154,7 +169,15 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		fmt.Printf("Error encoding JSON response: %v\n", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Toggle response sent: %+v\n", response)
 }
 
 // Core plugin functionality - these are the only endpoints that matter

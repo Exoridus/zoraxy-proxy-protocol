@@ -30,6 +30,11 @@
             border: 1px solid #c3e6cb;
             color: #155724;
         }
+        .status.error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
         .config-section {
             margin: 20px 0;
             padding: 20px;
@@ -87,38 +92,48 @@
 
     <script>
         function loadStatus() {
-            fetch('/ui/api/status')
+            fetch('./api/status')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('status').textContent = `Status: ${data.status}`;
+                    const statusElement = document.getElementById('status');
+                    statusElement.textContent = `Status: ${data.status}`;
+                    statusElement.className = 'status'; // Reset to success styling
                     document.getElementById('enabledCheckbox').checked = data.enabled;
                 })
                 .catch(error => {
-                    document.getElementById('status').textContent = 'Status: Error loading status';
+                    console.error('Failed to load status:', error);
+                    const statusElement = document.getElementById('status');
+                    statusElement.textContent = 'Status: Error loading status';
+                    statusElement.className = 'status error';
                 });
         }
 
         function toggleProxyProtocol() {
             const enabled = document.getElementById('enabledCheckbox').checked;
-            fetch('/ui/api/toggle', {
+            fetch('./api/toggle', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ enabled: enabled })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.result === 'success') {
                     loadStatus();
                     alert('Configuration updated successfully');
                 } else {
-                    alert('Error updating configuration');
+                    alert('Error updating configuration: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating configuration');
+                alert('Error updating configuration: ' + error.message);
             });
         }
 
