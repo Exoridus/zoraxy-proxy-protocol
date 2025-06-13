@@ -148,6 +148,14 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for CSRF token
+	csrfToken := r.Header.Get("X-Zoraxy-Csrf")
+	if csrfToken == "" || csrfToken == "missing-csrf-token" {
+		fmt.Printf("CSRF token missing or invalid: %s\n", csrfToken)
+		http.Error(w, "Forbidden - CSRF token not found in request", http.StatusForbidden)
+		return
+	}
+
 	var req ToggleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		fmt.Printf("Error decoding JSON: %v\n", err)

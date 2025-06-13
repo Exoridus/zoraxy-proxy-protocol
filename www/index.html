@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{.csrfToken}}">
     <title>Proxy Protocol Plugin</title>
     <style>
         body {
@@ -110,10 +111,13 @@
 
         function toggleProxyProtocol() {
             const enabled = document.getElementById('enabledCheckbox').checked;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
             fetch('./api/toggle', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Zoraxy-Csrf': csrfToken
                 },
                 body: JSON.stringify({ enabled: enabled })
             })
