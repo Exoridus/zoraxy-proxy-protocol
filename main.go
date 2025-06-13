@@ -82,20 +82,26 @@ func main() {
 		panic(err)
 	}
 
-	// Create embedded web router for UI
-	embedWebRouter := plugin.NewPluginEmbedUIRouter(PLUGIN_ID, &content, WEB_ROOT, UI_PATH)
-	embedWebRouter.RegisterTerminateHandler(func() {
-		fmt.Println("Proxy Protocol Plugin terminated")
-	}, nil)
-	embedWebRouter.AttachHandlerToMux(nil)
-
 	// Register core plugin endpoints (required by Zoraxy)
 	http.HandleFunc("/proxy_protocol_sniff", handleProxyProtocolSniff)
 	http.HandleFunc("/proxy_protocol_handler", handleProxyProtocolIngress)
 
-	// Register UI API endpoints (relative to plugin UI path)
-	http.HandleFunc(UI_PATH+"/api/status", handleAPIStatus)
-	http.HandleFunc(UI_PATH+"/api/toggle", handleAPIToggle)
+	// Create custom mux for better control over routing
+	mux := http.NewServeMux()
+
+	// Register API endpoints on the main mux before the embedded router
+	mux.HandleFunc("/api/status", handleAPIStatus)
+	mux.HandleFunc("/api/toggle", handleAPIToggle)
+
+	// Create embedded web router for UI
+	embedWebRouter := plugin.NewPluginEmbedUIRouter(PLUGIN_ID, &content, WEB_ROOT, UI_PATH)
+	embedWebRouter.RegisterTerminateHandler(func() {
+		fmt.Println("Proxy Protocol Plugin terminated")
+	}, mux)
+	embedWebRouter.AttachHandlerToMux(mux)
+
+	// Register the mux as a handler for the UI path
+	http.Handle(UI_PATH+"/", mux)
 
 	fmt.Println("Proxy Protocol Plugin started at http://127.0.0.1:" + strconv.Itoa(runtimeCfg.Port))
 	err = http.ListenAndServe("127.0.0.1:"+strconv.Itoa(runtimeCfg.Port), nil)
