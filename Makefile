@@ -5,7 +5,9 @@ BINARY_NAME=proxy-protocol
 DIST_DIR=dist
 SRC_DIR=src
 
-
+# Test variables
+TEST_TIMEOUT=30s
+COVERAGE_DIR=$(DIST_DIR)/coverage
 
 # Function to get version (only called when needed)
 define get_version
@@ -31,7 +33,7 @@ $(eval LDFLAGS := -ldflags="-s -w -X main.versionMajor=$(VERSION_MAJOR) -X main.
 endef
 
 # Default target - show help when no target specified
-.PHONY: all help clean
+.PHONY: all help clean test test-verbose test-coverage test-short bench
 
 # Default target
 all: help
@@ -45,12 +47,19 @@ help:
 	@echo "\033[1;34m║\033[0m     \033[1;37mZoraxy Proxy Protocol Plugin - Build System\033[0m     \033[1;34m║\033[0m"
 	@echo "\033[1;34m╚═════════════════════════════════════════════════════╝\033[0m"
 	@echo ""
+	@echo "\033[1;33m🧪 TESTING\033[0m"
+	@echo "  \033[1;32mtest\033[0m        Run all tests with standard output"
+	@echo "  \033[1;32mtest-verbose\033[0m  Run tests with verbose output and logs"
+	@echo "  \033[1;32mtest-coverage\033[0m  Run tests with coverage analysis"
+	@echo "  \033[1;32mtest-short\033[0m   Run only short tests (skip integration tests)"
+	@echo "  \033[1;32mbench\033[0m       Run benchmarks"
+	@echo ""
 	@echo "\033[1;33m🔨 BUILD\033[0m"
 	@echo "  \033[1;32mbuild\033[0m       Build for current platform \033[2m[VERSION, PLATFORM, ARCH]\033[0m"
 	@echo "  \033[1;32mbuild-all\033[0m   Build for all supported platforms \033[2m[VERSION]\033[0m"
 	@echo ""
 	@echo "\033[1;33m📦 RELEASE & INSTALL\033[0m"
-	@echo "  \033[1;32mrelease\033[0m     Complete release (clean + build-all + package) \033[2m[VERSION]\033[0m"
+	@echo "  \033[1;32mrelease\033[0m     Complete release (test + clean + build-all + package) \033[2m[VERSION]\033[0m"
 	@echo "  \033[1;32minstall\033[0m     Install plugin to Zoraxy plugins directory \033[2m[ZORAXY_DIR, VERSION, PLATFORM, ARCH]\033[0m"
 	@echo ""
 	@echo "\033[1;33m🛠️  UTILITY\033[0m"
@@ -64,10 +73,39 @@ help:
 	@echo "  \033[1;36mZORAXY_DIR=/opt/zoraxy\033[0m  Zoraxy path (if omitted, tries to auto-detect)"
 	@echo ""
 	@echo "\033[1;33m💡 EXAMPLES\033[0m"
+	@echo "  make test                              \033[2m# Run all tests\033[0m"
+	@echo "  make test-coverage                     \033[2m# Run tests with coverage\033[0m"
 	@echo "  make build VERSION=1.0.0              \033[2m# Explicit version\033[0m"
 	@echo "  make build PLATFORM=linux ARCH=arm64  \033[2m# Cross-compile for ARM64\033[0m"
 	@echo "  make install ZORAXY_DIR=/opt/zoraxy    \033[2m# Install to specific path\033[0m"
 	@echo "  make release VERSION=2.1.0            \033[2m# Release with explicit version\033[0m"
+
+# Test targets
+test:
+	@echo "→ Running tests..."
+	@cd $(SRC_DIR) && go test -timeout=$(TEST_TIMEOUT) ./... && echo "✓ All tests passed"
+
+test-verbose:
+	@echo "→ Running tests with verbose output..."
+	@cd $(SRC_DIR) && go test -v -timeout=$(TEST_TIMEOUT) ./...
+	@echo "✓ All tests passed"
+
+test-short:
+	@echo "→ Running short tests..."
+	@cd $(SRC_DIR) && go test -short -timeout=$(TEST_TIMEOUT) ./... && echo "✓ Short tests passed"
+
+test-coverage:
+	@echo "→ Running tests with coverage analysis..."
+	@mkdir -p $(COVERAGE_DIR)
+	@cd $(SRC_DIR) && go test -timeout=$(TEST_TIMEOUT) -coverprofile=../$(COVERAGE_DIR)/coverage.out -covermode=count $$(go list ./... | grep -v './mod/zoraxy_plugin')
+	@cd $(SRC_DIR) && go tool cover -html=../$(COVERAGE_DIR)/coverage.out -o ../$(COVERAGE_DIR)/coverage.html
+	@cd $(SRC_DIR) && go tool cover -func=../$(COVERAGE_DIR)/coverage.out
+	@echo "✓ Coverage report generated at $(COVERAGE_DIR)/coverage.html"
+
+bench:
+	@echo "→ Running benchmarks..."
+	@cd $(SRC_DIR) && go test -bench=. -benchmem ./...
+	@echo "✓ Benchmarks completed"
 
 # Generic build target - auto-detects platform and version if not specified
 .PHONY: build build-all release install
@@ -85,7 +123,7 @@ build:
 	@echo "✓ $(PLATFORM)/$(ARCH) version $(CURRENT_VERSION) build completed"
 
 # Build all platforms using the generic build target
-build-all:
+build-all: test
 	$(call validate_version)
 	$(call parse_version)
 	@$(MAKE) build VERSION=$(CURRENT_VERSION) PLATFORM=linux ARCH=amd64
@@ -96,7 +134,7 @@ build-all:
 	@$(MAKE) build VERSION=$(CURRENT_VERSION) PLATFORM=freebsd ARCH=amd64
 	@echo "✓ All builds completed for version $(CURRENT_VERSION)"
 
-release: clean build-all
+release: test clean build-all
 	$(call parse_version)
 	@echo "Creating plugin packages for version $(CURRENT_VERSION)..."
 	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-linux-amd64 && zip -r ../$(BINARY_NAME)-linux-amd64.zip $(BINARY_NAME)
