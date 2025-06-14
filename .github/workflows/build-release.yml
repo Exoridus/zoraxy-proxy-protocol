@@ -24,7 +24,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('src/go.mod') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -38,10 +38,19 @@ jobs:
           go vet ./...
 
       - name: Run unit tests
-        run: make test-verbose
+        run: make test-unit
 
       - name: Run tests with coverage
         run: make test-coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Run benchmarks
         run: make bench
@@ -50,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: dist/coverage/
+          path: coverage/
           retention-days: 30
 
       - name: Upload test results
@@ -58,7 +67,7 @@ jobs:
         run: |
           echo "Test suite completed"
           echo "Coverage files:"
-          ls -la dist/coverage/ || echo "No coverage files found"
+          ls -la coverage/ || echo "No coverage files found"
 
   build:
     name: Build and Package
@@ -82,7 +91,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('src/go.mod') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -94,15 +103,12 @@ jobs:
           echo "Building with auto-detected version from git tag: ${{ github.ref_name }}"
           make release
 
-      - name: Clean up build directories (keep only packages)
+      - name: List release packages
         run: |
-          echo "=== Before cleanup ==="
-          ls -la dist/
+          echo "=== Release Packages ==="
+          ls -la dist/*.zip
           echo ""
-          # Remove build directories, keep only zip packages
-          find dist/ -maxdepth 1 -type d -name "proxy-protocol-*" -exec rm -rf {} \;
-          echo "=== After cleanup ==="
-          ls -la dist/
+          echo "Total packages: $(ls dist/*.zip | wc -l)"
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4

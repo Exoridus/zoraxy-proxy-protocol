@@ -1,5 +1,11 @@
 # Proxy Protocol Plugin for Zoraxy
 
+[![Latest Version](https://img.shields.io/github/v/release/Exoridus/zoraxy-proxy-protocol?style=for-the-badge&label=Latest&logo=github&color=44cc11)](https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Exoridus/zoraxy-proxy-protocol/build-release.yml?style=for-the-badge&label=Build&logo=github)](https://github.com/Exoridus/zoraxy-proxy-protocol/actions)
+[![Code Coverage](https://img.shields.io/codecov/c/github/Exoridus/zoraxy-proxy-protocol?style=for-the-badge&label=Coverage&logo=codecov)](https://codecov.io/gh/Exoridus/zoraxy-proxy-protocol)
+![Go Version](https://img.shields.io/github/go-mod/go-version/Exoridus/zoraxy-proxy-protocol/master?filename=src%2Fgo.mod&style=for-the-badge&label=&logo=go&logoColor=%23fff&logoSize=auto)
+[![Sponsor](https://img.shields.io/badge/Sponsor-1a1e23?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/Exoridus)
+
 A Zoraxy plugin that adds support for the Proxy Protocol (HAProxy compatible), preserving original client IP information when traffic passes through Layer 4 proxies or load balancers.
 
 ## ⚠️ **DISCLAIMER - WORK IN PROGRESS**

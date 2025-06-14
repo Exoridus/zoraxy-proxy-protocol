@@ -7,7 +7,7 @@ SRC_DIR=src
 
 # Test variables
 TEST_TIMEOUT=30s
-COVERAGE_DIR=$(DIST_DIR)/coverage
+COVERAGE_DIR=coverage
 
 # Function to get version (only called when needed)
 define get_version
@@ -33,14 +33,16 @@ $(eval LDFLAGS := -ldflags="-s -w -X main.versionMajor=$(VERSION_MAJOR) -X main.
 endef
 
 # Default target - show help when no target specified
-.PHONY: all help clean test test-verbose test-coverage test-short bench
+.PHONY: all help clean test test-unit test-coverage bench
 
 # Default target
 all: help
 
 clean:
-	rm -f $(BINARY_NAME)*
-	rm -rf $(DIST_DIR)
+	@echo "→ Cleaning build artifacts..."
+	@-rm -f $(BINARY_NAME)* 2>/dev/null
+	@-rm -rf $(DIST_DIR) 2>/dev/null
+	@echo "✓ Clean completed"
 
 help:
 	@echo "\033[1;34m╔═════════════════════════════════════════════════════╗\033[0m"
@@ -48,10 +50,9 @@ help:
 	@echo "\033[1;34m╚═════════════════════════════════════════════════════╝\033[0m"
 	@echo ""
 	@echo "\033[1;33m🧪 TESTING\033[0m"
-	@echo "  \033[1;32mtest\033[0m        Run all tests with standard output"
-	@echo "  \033[1;32mtest-verbose\033[0m  Run tests with verbose output and logs"
+	@echo "  \033[1;32mtest\033[0m        Run complete test suite (clean + unit + coverage)"
+	@echo "  \033[1;32mtest-unit\033[0m   Run unit tests with verbose output"
 	@echo "  \033[1;32mtest-coverage\033[0m  Run tests with coverage analysis"
-	@echo "  \033[1;32mtest-short\033[0m   Run only short tests (skip integration tests)"
 	@echo "  \033[1;32mbench\033[0m       Run benchmarks"
 	@echo ""
 	@echo "\033[1;33m🔨 BUILD\033[0m"
@@ -73,7 +74,8 @@ help:
 	@echo "  \033[1;36mZORAXY_DIR=/opt/zoraxy\033[0m  Zoraxy path (if omitted, tries to auto-detect)"
 	@echo ""
 	@echo "\033[1;33m💡 EXAMPLES\033[0m"
-	@echo "  make test                              \033[2m# Run all tests\033[0m"
+	@echo "  make test                              \033[2m# Run complete test suite\033[0m"
+	@echo "  make test-unit                         \033[2m# Run unit tests only\033[0m"
 	@echo "  make test-coverage                     \033[2m# Run tests with coverage\033[0m"
 	@echo "  make build VERSION=1.0.0              \033[2m# Explicit version\033[0m"
 	@echo "  make build PLATFORM=linux ARCH=arm64  \033[2m# Cross-compile for ARM64\033[0m"
@@ -81,21 +83,17 @@ help:
 	@echo "  make release VERSION=2.1.0            \033[2m# Release with explicit version\033[0m"
 
 # Test targets
-test:
-	@echo "→ Running tests..."
-	@cd $(SRC_DIR) && go test -timeout=$(TEST_TIMEOUT) ./... && echo "✓ All tests passed"
+test: clean test-unit test-coverage
+	@echo "✓ Complete test suite finished successfully"
 
-test-verbose:
-	@echo "→ Running tests with verbose output..."
+test-unit:
+	@echo "→ Running unit tests with verbose output..."
 	@cd $(SRC_DIR) && go test -v -timeout=$(TEST_TIMEOUT) ./...
-	@echo "✓ All tests passed"
-
-test-short:
-	@echo "→ Running short tests..."
-	@cd $(SRC_DIR) && go test -short -timeout=$(TEST_TIMEOUT) ./... && echo "✓ Short tests passed"
+	@echo "✓ All unit tests passed"
 
 test-coverage:
 	@echo "→ Running tests with coverage analysis..."
+	@rm -rf $(COVERAGE_DIR)
 	@mkdir -p $(COVERAGE_DIR)
 	@cd $(SRC_DIR) && go test -timeout=$(TEST_TIMEOUT) -coverprofile=../$(COVERAGE_DIR)/coverage.out -covermode=count $$(go list ./... | grep -v './mod/zoraxy_plugin')
 	@cd $(SRC_DIR) && go tool cover -html=../$(COVERAGE_DIR)/coverage.out -o ../$(COVERAGE_DIR)/coverage.html
