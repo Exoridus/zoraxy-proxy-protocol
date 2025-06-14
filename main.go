@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 
@@ -33,6 +38,13 @@ var config = &PluginConfig{
 	Enabled: false,
 }
 
+// Logger for the plugin
+var logger *log.Logger
+
+// Plugin connection registry for active connections
+var activeConnections = make(map[string]*proxyProtocolConn)
+var connectionsMutex sync.RWMutex
+
 // API response structures
 type StatusResponse struct {
 	Status  string `json:"status"`
@@ -47,6 +59,10 @@ type ToggleRequest struct {
 type ToggleResponse struct {
 	Result  string `json:"result"`
 	Enabled bool   `json:"enabled"`
+}
+
+func init() {
+	logger = log.New(os.Stdout, "[ProxyProtocol] ", log.LstdFlags)
 }
 
 func main() {
@@ -188,7 +204,7 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Toggle response sent: %+v\n", response)
 }
 
-// Core plugin functionality - these are the only endpoints that matter
+// Core plugin functionality - these are the endpoints that Zoraxy calls
 func handleProxyProtocolSniff(w http.ResponseWriter, r *http.Request) {
 	config.mu.RLock()
 	enabled := config.Enabled
@@ -200,10 +216,26 @@ func handleProxyProtocolSniff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement actual proxy protocol detection logic
-	// For now, just indicate that we're enabled and ready
+	// Get the raw connection data from the request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Printf("Error reading request body for sniffing: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("ERROR"))
+		return
+	}
+
+	// Check if this looks like proxy protocol data
+	if detectProxyProtocol(body) {
+		logger.Printf("Proxy Protocol detected in connection")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("PROXY_PROTOCOL"))
+		return
+	}
+
+	// Not proxy protocol data
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	w.Write([]byte("NORMAL"))
 }
 
 func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +249,126 @@ func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement actual proxy protocol processing logic
+	// Get connection identifier from headers
+	connID := r.Header.Get("X-Connection-ID")
+	if connID == "" {
+		logger.Printf("No connection ID provided in proxy protocol ingress")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("No Connection ID"))
+		return
+	}
+
+	// Read the raw connection data
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Printf("Error reading proxy protocol data: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Read Error"))
+		return
+	}
+
+	// Process the proxy protocol data
+	processedData, proxyInfo, err := processProxyProtocolData(body)
+	if err != nil {
+		logger.Printf("Error processing proxy protocol: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Parse Error"))
+		return
+	}
+
+	if proxyInfo != nil {
+		logger.Printf("Proxy Protocol parsed: %s:%d -> %s:%d",
+			proxyInfo.SourceAddr, proxyInfo.SourcePort,
+			proxyInfo.DestAddr, proxyInfo.DestPort)
+
+		// Store the proxy info for later use
+		connectionsMutex.Lock()
+		if conn, exists := activeConnections[connID]; exists {
+			conn.ProxyInfo = proxyInfo
+		}
+		connectionsMutex.Unlock()
+
+		// Set headers for the processed request
+		w.Header().Set("X-Forwarded-For", proxyInfo.SourceAddr)
+		w.Header().Set("X-Real-IP", proxyInfo.SourceAddr)
+		w.Header().Set("X-Forwarded-Port", strconv.Itoa(proxyInfo.SourcePort))
+	}
+
+	// Return the processed data (without proxy protocol headers)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Proxy Protocol Handler"))
+	w.Write(processedData)
+}
+
+// detectProxyProtocol checks if the data starts with proxy protocol headers
+func detectProxyProtocol(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+
+	// Check for Proxy Protocol v1 (text-based)
+	if bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
+		return true
+	}
+
+	// Check for Proxy Protocol v2 (binary)
+	if len(data) >= len(ProxyProtocolV2Prefix) &&
+		bytes.HasPrefix(data, []byte(ProxyProtocolV2Prefix)) {
+		return true
+	}
+
+	return false
+}
+
+// processProxyProtocolData parses proxy protocol headers and returns the remaining data
+func processProxyProtocolData(data []byte) ([]byte, *ProxyProtocolInfo, error) {
+	if len(data) == 0 {
+		return data, nil, nil
+	}
+
+	reader := bufio.NewReader(bytes.NewReader(data))
+
+	// Try to parse proxy protocol
+	if bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
+		// Parse v1
+		proxyInfo, err := parseProxyProtocolV1(reader)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Find where the proxy protocol header ends
+		headerEnd := bytes.Index(data, []byte("\r\n"))
+		if headerEnd == -1 {
+			return nil, nil, fmt.Errorf("malformed proxy protocol v1 header")
+		}
+
+		// Return remaining data after the header
+		remainingData := data[headerEnd+2:]
+		return remainingData, proxyInfo, nil
+
+	} else if bytes.HasPrefix(data, []byte(ProxyProtocolV2Prefix)) {
+		// Parse v2
+		proxyInfo, err := parseProxyProtocolV2(reader)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// For v2, we need to calculate the header length
+		if len(data) < 16 {
+			return nil, nil, fmt.Errorf("proxy protocol v2 header too short")
+		}
+
+		// Read the length field (bytes 14-15)
+		headerLen := 16 + int(data[14])<<8 + int(data[15])
+		if len(data) < headerLen {
+			return nil, nil, fmt.Errorf("proxy protocol v2 header incomplete")
+		}
+
+		// Return remaining data after the header
+		remainingData := data[headerLen:]
+		return remainingData, proxyInfo, nil
+
+	}
+
+	// No proxy protocol found
+	return data, nil, nil
 }
