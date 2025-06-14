@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	plugin "go.codexo.de/exoridus/zoraxy-proxy-protocol/mod/zoraxy_plugin"
@@ -254,13 +255,23 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 
 // Core plugin functionality - these are the endpoints that Zoraxy calls
 func handleProxyProtocolSniff(w http.ResponseWriter, r *http.Request) {
+	logger.Printf("=== SNIFF REQUEST RECEIVED ===")
+	logger.Printf("Method: %s, URL: %s", r.Method, r.URL.Path)
+	logger.Printf("Headers: %+v", r.Header)
+	logger.Printf("Remote Addr: %s", r.RemoteAddr)
+
 	config.mu.RLock()
 	enabled := config.Enabled
 	config.mu.RUnlock()
 
+	logger.Printf("Plugin enabled status: %t", enabled)
+
 	if !enabled {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("DISABLED"))
+		// Plugin disabled - let Zoraxy handle normally
+		logger.Printf("Plugin disabled, returning UNHANDLED")
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(284) // ControlStatusCode_UNHANDLED
+		w.Write([]byte("UNHANDLED"))
 		return
 	}
 
@@ -268,30 +279,60 @@ func handleProxyProtocolSniff(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		logger.Printf("Error reading request body for sniffing: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(580) // ControlStatusCode_ERROR
 		w.Write([]byte("ERROR"))
 		return
 	}
 
+	logger.Printf("Received %d bytes of data for sniffing", len(body))
+	if len(body) > 0 {
+		// Log first few bytes in hex for debugging
+		hexStr := ""
+		for i := 0; i < min(32, len(body)); i++ {
+			hexStr += fmt.Sprintf("%02x ", body[i])
+		}
+		logger.Printf("First bytes (hex): %s", hexStr)
+
+		// Also show as string if printable
+		printable := ""
+		for i := 0; i < min(64, len(body)); i++ {
+			if body[i] >= 32 && body[i] <= 126 {
+				printable += string(body[i])
+			} else {
+				printable += fmt.Sprintf("\\x%02x", body[i])
+			}
+		}
+		logger.Printf("First bytes (mixed): %s", printable)
+	}
+
 	// Check if this looks like proxy protocol data
 	if detectProxyProtocol(body) {
-		logger.Printf("Proxy Protocol detected in connection")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("PROXY_PROTOCOL"))
+		logger.Printf("✅ Proxy Protocol detected in connection")
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(280) // ControlStatusCode_CAPTURED - Tell Zoraxy we'll handle this
+		w.Write([]byte("CAPTURED"))
 		return
 	}
 
-	// Not proxy protocol data
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("NORMAL"))
+	// Not proxy protocol data - let Zoraxy handle normally
+	logger.Printf("❌ No Proxy Protocol detected, returning UNHANDLED")
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(284) // ControlStatusCode_UNHANDLED
+	w.Write([]byte("UNHANDLED"))
 }
 
 func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
+	logger.Printf("=== INGRESS REQUEST RECEIVED ===")
+	logger.Printf("Method: %s, URL: %s", r.Method, r.URL.Path)
+	logger.Printf("Headers: %+v", r.Header)
+
 	config.mu.RLock()
 	enabled := config.Enabled
 	config.mu.RUnlock()
 
 	if !enabled {
+		logger.Printf("Plugin disabled in ingress handler")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte("Proxy Protocol Handler Disabled"))
 		return
@@ -306,6 +347,8 @@ func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Printf("Processing connection ID: %s", connID)
+
 	// Read the raw connection data
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -314,6 +357,8 @@ func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Read Error"))
 		return
 	}
+
+	logger.Printf("Received %d bytes of data for processing", len(body))
 
 	// Process the proxy protocol data
 	processedData, proxyInfo, err := processProxyProtocolData(body)
@@ -325,9 +370,9 @@ func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if proxyInfo != nil {
-		logger.Printf("Proxy Protocol parsed: %s:%d -> %s:%d",
+		logger.Printf("✅ Proxy Protocol parsed: %s:%d -> %s:%d (v%d)",
 			proxyInfo.SourceAddr, proxyInfo.SourcePort,
-			proxyInfo.DestAddr, proxyInfo.DestPort)
+			proxyInfo.DestAddr, proxyInfo.DestPort, proxyInfo.Version)
 
 		// Store the proxy info for later use
 		connectionsMutex.Lock()
@@ -336,13 +381,23 @@ func handleProxyProtocolIngress(w http.ResponseWriter, r *http.Request) {
 		}
 		connectionsMutex.Unlock()
 
-		// Set headers for the processed request
+		// Set headers for the processed request with original client IP
+		w.Header().Set("X-Original-Remote-Addr", proxyInfo.SourceAddr)
+		w.Header().Set("X-Original-Remote-Port", strconv.Itoa(proxyInfo.SourcePort))
 		w.Header().Set("X-Forwarded-For", proxyInfo.SourceAddr)
 		w.Header().Set("X-Real-IP", proxyInfo.SourceAddr)
 		w.Header().Set("X-Forwarded-Port", strconv.Itoa(proxyInfo.SourcePort))
+
+		// Indicate to Zoraxy that it should use the original client IP for further processing
+		w.Header().Set("X-Proxy-Protocol-Source", fmt.Sprintf("%s:%d", proxyInfo.SourceAddr, proxyInfo.SourcePort))
+	} else {
+		logger.Printf("No proxy protocol info found, passing through data unchanged")
 	}
 
 	// Return the processed data (without proxy protocol headers)
+	// This should be the actual HTTP/HTTPS request that Zoraxy can process
+	logger.Printf("Returning %d bytes of processed data", len(processedData))
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
 	w.Write(processedData)
 }
@@ -354,14 +409,34 @@ func detectProxyProtocol(data []byte) bool {
 	}
 
 	// Check for Proxy Protocol v1 (text-based)
-	if bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
-		return true
+	// Format: "PROXY TCP4 255.255.255.255 255.255.255.255 65535 65535\r\n"
+	if len(data) >= len(ProxyProtocolV1Prefix) &&
+		bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
+		// Additional validation: check for proper line ending
+		if idx := bytes.Index(data, []byte("\r\n")); idx != -1 {
+			line := string(data[:idx])
+			parts := strings.Fields(line)
+			// Valid proxy protocol v1 should have at least 6 parts
+			if len(parts) >= 6 && parts[0] == "PROXY" {
+				return true
+			}
+		}
 	}
 
 	// Check for Proxy Protocol v2 (binary)
+	// Must have the exact 12-byte signature
 	if len(data) >= len(ProxyProtocolV2Prefix) &&
-		bytes.HasPrefix(data, []byte(ProxyProtocolV2Prefix)) {
-		return true
+		bytes.Equal(data[:len(ProxyProtocolV2Prefix)], []byte(ProxyProtocolV2Prefix)) {
+		// Additional validation: check version and command fields
+		if len(data) >= 16 {
+			versionCmd := data[12]
+			version := versionCmd >> 4
+			command := versionCmd & 0xF
+			// Version should be 2, command should be 0 (LOCAL) or 1 (PROXY)
+			if version == 2 && (command == 0 || command == 1) {
+				return true
+			}
+		}
 	}
 
 	return false
@@ -376,47 +451,84 @@ func processProxyProtocolData(data []byte) ([]byte, *ProxyProtocolInfo, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 
 	// Try to parse proxy protocol
-	if bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
+	if len(data) >= len(ProxyProtocolV1Prefix) &&
+		bytes.HasPrefix(data, []byte(ProxyProtocolV1Prefix)) {
 		// Parse v1
 		proxyInfo, err := parseProxyProtocolV1(reader)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("proxy protocol v1 parse error: %w", err)
 		}
 
 		// Find where the proxy protocol header ends
 		headerEnd := bytes.Index(data, []byte("\r\n"))
 		if headerEnd == -1 {
-			return nil, nil, fmt.Errorf("malformed proxy protocol v1 header")
+			return nil, nil, fmt.Errorf("malformed proxy protocol v1 header: missing CRLF")
 		}
 
 		// Return remaining data after the header
 		remainingData := data[headerEnd+2:]
+
+		// Log what we're returning for debugging
+		logger.Printf("Proxy Protocol v1 processed, returning %d bytes of data", len(remainingData))
+		if len(remainingData) > 0 {
+			// Check if remaining data looks like TLS handshake
+			if remainingData[0] == 0x16 { // TLS handshake record type
+				logger.Printf("Remaining data appears to be TLS handshake")
+			} else if remainingData[0] >= 0x20 && remainingData[0] <= 0x7E {
+				// Looks like printable ASCII (HTTP)
+				logger.Printf("Remaining data appears to be HTTP: %s", string(remainingData[:min(50, len(remainingData))]))
+			}
+		}
+
 		return remainingData, proxyInfo, nil
 
-	} else if bytes.HasPrefix(data, []byte(ProxyProtocolV2Prefix)) {
+	} else if len(data) >= len(ProxyProtocolV2Prefix) &&
+		bytes.Equal(data[:len(ProxyProtocolV2Prefix)], []byte(ProxyProtocolV2Prefix)) {
 		// Parse v2
 		proxyInfo, err := parseProxyProtocolV2(reader)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("proxy protocol v2 parse error: %w", err)
 		}
 
 		// For v2, we need to calculate the header length
 		if len(data) < 16 {
-			return nil, nil, fmt.Errorf("proxy protocol v2 header too short")
+			return nil, nil, fmt.Errorf("proxy protocol v2 header too short: %d bytes", len(data))
 		}
 
 		// Read the length field (bytes 14-15)
-		headerLen := 16 + int(data[14])<<8 + int(data[15])
+		addrLen := int(data[14])<<8 + int(data[15])
+		headerLen := 16 + addrLen
+
 		if len(data) < headerLen {
-			return nil, nil, fmt.Errorf("proxy protocol v2 header incomplete")
+			return nil, nil, fmt.Errorf("proxy protocol v2 header incomplete: expected %d bytes, got %d", headerLen, len(data))
 		}
 
 		// Return remaining data after the header
 		remainingData := data[headerLen:]
-		return remainingData, proxyInfo, nil
 
+		// Log what we're returning for debugging
+		logger.Printf("Proxy Protocol v2 processed, returning %d bytes of data", len(remainingData))
+		if len(remainingData) > 0 {
+			// Check if remaining data looks like TLS handshake
+			if remainingData[0] == 0x16 { // TLS handshake record type
+				logger.Printf("Remaining data appears to be TLS handshake")
+			} else if remainingData[0] >= 0x20 && remainingData[0] <= 0x7E {
+				// Looks like printable ASCII (HTTP)
+				logger.Printf("Remaining data appears to be HTTP: %s", string(remainingData[:min(50, len(remainingData))]))
+			}
+		}
+
+		return remainingData, proxyInfo, nil
 	}
 
 	// No proxy protocol found
 	return data, nil, nil
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
