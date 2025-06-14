@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{.csrfToken}}">
+    <meta name="zoraxy.csrf.Token" content="{{.csrfToken}}">
     <title>Proxy Protocol Plugin</title>
     <style>
         body {
@@ -22,6 +22,12 @@
         .header {
             text-align: center;
             margin-bottom: 30px;
+        }
+        .version {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #6c757d;
+            font-size: 14px;
         }
         .status {
             padding: 15px;
@@ -42,16 +48,38 @@
             border: 1px solid #dee2e6;
             border-radius: 5px;
         }
-        button {
-            background-color: #007bff;
+        .toggle-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .toggle-button {
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 12px 24px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 16px;
+            min-width: 120px;
+            transition: background-color 0.3s ease;
         }
-        button:hover {
-            background-color: #0056b3;
+        .toggle-button.enable {
+            background-color: #28a745;
+        }
+        .toggle-button.enable:hover {
+            background-color: #218838;
+        }
+        .toggle-button.disable {
+            background-color: #dc3545;
+        }
+        .toggle-button.disable:hover {
+            background-color: #c82333;
+        }
+        .toggle-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .toggle-button:disabled:hover {
+            background-color: #6c757d;
         }
     </style>
 </head>
@@ -62,6 +90,10 @@
             <p>HAProxy Compatible Proxy Protocol Support for Zoraxy</p>
         </div>
 
+        <div class="version" id="version">
+            Version: Loading...
+        </div>
+
         <div class="status" id="status">
             Status: Loading...
         </div>
@@ -70,13 +102,11 @@
             <h3>Configuration</h3>
             <p>This plugin adds support for the Proxy Protocol, which allows preserving client connection information when traffic passes through a Layer 4 proxy like HAProxy.</p>
 
-            <div>
-                <label>
-                    <input type="checkbox" id="enabledCheckbox"> Enable Proxy Protocol Support
-                </label>
+            <div class="toggle-container">
+                <button id="toggleButton" class="toggle-button" onclick="toggleProxyProtocol()" disabled>
+                    Loading...
+                </button>
             </div>
-
-            <button onclick="toggleProxyProtocol()">Apply Changes</button>
         </div>
 
         <div class="config-section">
@@ -92,34 +122,69 @@
     </div>
 
     <script>
+        let currentEnabled = false;
+
+        function updateToggleButton(enabled, disabled = false) {
+            const button = document.getElementById('toggleButton');
+            currentEnabled = enabled;
+
+            if (disabled) {
+                button.textContent = 'Unavailable';
+                button.className = 'toggle-button';
+                button.disabled = true;
+            } else {
+                if (enabled) {
+                    button.textContent = 'Disable';
+                    button.className = 'toggle-button disable';
+                } else {
+                    button.textContent = 'Enable';
+                    button.className = 'toggle-button enable';
+                }
+                button.disabled = false;
+            }
+        }
+
         function loadStatus() {
             fetch('./api/status')
                 .then(response => response.json())
                 .then(data => {
                     const statusElement = document.getElementById('status');
                     statusElement.textContent = `Status: ${data.status}`;
-                    statusElement.className = 'status'; // Reset to success styling
-                    document.getElementById('enabledCheckbox').checked = data.enabled;
+                    statusElement.className = 'status';
+
+                    const versionElement = document.getElementById('version');
+                    versionElement.textContent = `Version: ${data.version || 'Unknown'}`;
+
+                    updateToggleButton(data.enabled);
                 })
                 .catch(error => {
                     console.error('Failed to load status:', error);
                     const statusElement = document.getElementById('status');
                     statusElement.textContent = 'Status: Error loading status';
                     statusElement.className = 'status error';
+
+                    const versionElement = document.getElementById('version');
+                    versionElement.textContent = 'Version: Unknown';
+
+                    updateToggleButton(false, true);
                 });
         }
 
         function toggleProxyProtocol() {
-            const enabled = document.getElementById('enabledCheckbox').checked;
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            const button = document.getElementById('toggleButton');
+            button.disabled = true;
+            button.textContent = 'Updating...';
+
+            const newEnabled = !currentEnabled;
+            const csrfToken = document.querySelector('meta[name="zoraxy.csrf.Token"]').getAttribute('content');
 
             fetch('./api/toggle', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Zoraxy-Csrf': csrfToken
+                    'X-CSRF-Token': csrfToken
                 },
-                body: JSON.stringify({ enabled: enabled })
+                body: JSON.stringify({ enabled: newEnabled })
             })
             .then(response => {
                 if (!response.ok) {
@@ -130,18 +195,17 @@
             .then(data => {
                 if (data.result === 'success') {
                     loadStatus();
-                    alert('Configuration updated successfully');
                 } else {
-                    alert('Error updating configuration: ' + (data.error || 'Unknown error'));
+                    throw new Error(data.error || 'Unknown error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 alert('Error updating configuration: ' + error.message);
+                updateToggleButton(currentEnabled);
             });
         }
 
-        // Load initial status
         loadStatus();
     </script>
 </body>

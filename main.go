@@ -149,8 +149,8 @@ func handleAPIToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for CSRF token
-	csrfToken := r.Header.Get("X-Zoraxy-Csrf")
-	if csrfToken == "" || csrfToken == "missing-csrf-token" {
+	csrfToken := r.Header.Get("X-CSRF-Token")
+	if csrfToken == "" {
 		fmt.Printf("CSRF token missing or invalid: %s\n", csrfToken)
 		http.Error(w, "Forbidden - CSRF token not found in request", http.StatusForbidden)
 		return
