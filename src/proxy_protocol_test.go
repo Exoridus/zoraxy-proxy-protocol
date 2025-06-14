@@ -265,6 +265,150 @@ func TestProxyProtocolV2IPv6(t *testing.T) {
 		proxyInfo.DestAddr, proxyInfo.DestPort)
 }
 
+// Test Proxy Protocol v1 detection and parsing
+func TestProxyProtocolV1Format(t *testing.T) {
+	// Create a sample Proxy Protocol v1 header
+	// Format: "PROXY TCP4 192.0.2.100 198.51.100.50 45678 443\r\n"
+	proxyHeader := "PROXY TCP4 192.0.2.100 198.51.100.50 45678 443\r\n"
+
+	// Add some HTTP data
+	httpData := "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
+
+	testData := []byte(proxyHeader + httpData)
+
+	t.Logf("Created v1 test data with %d bytes", len(testData))
+
+	// Test detection
+	detected := detectProxyProtocol(testData)
+	if !detected {
+		t.Fatalf("Proxy Protocol v1 not detected!")
+	}
+	t.Logf("✅ Proxy Protocol v1 detected successfully")
+
+	// Test parsing
+	processedData, proxyInfo, err := processProxyProtocolData(testData)
+	if err != nil {
+		t.Fatalf("Parsing error: %v", err)
+	}
+
+	if proxyInfo == nil {
+		t.Fatalf("No proxy info returned")
+	}
+
+	t.Logf("✅ Proxy Protocol v1 parsed successfully")
+	t.Logf("   Source: %s:%d", proxyInfo.SourceAddr, proxyInfo.SourcePort)
+	t.Logf("   Dest: %s:%d", proxyInfo.DestAddr, proxyInfo.DestPort)
+	t.Logf("   Version: %d", proxyInfo.Version)
+	t.Logf("   Transport: %s", proxyInfo.TransportProto)
+	t.Logf("   Remaining data: %d bytes", len(processedData))
+
+	// Verify the values
+	if proxyInfo.SourceAddr != "192.0.2.100" {
+		t.Errorf("Expected source IP 192.0.2.100, got %s", proxyInfo.SourceAddr)
+	}
+
+	if proxyInfo.SourcePort != 45678 {
+		t.Errorf("Expected source port 45678, got %d", proxyInfo.SourcePort)
+	}
+
+	if proxyInfo.DestAddr != "198.51.100.50" {
+		t.Errorf("Expected dest IP 198.51.100.50, got %s", proxyInfo.DestAddr)
+	}
+
+	if proxyInfo.DestPort != 443 {
+		t.Errorf("Expected dest port 443, got %d", proxyInfo.DestPort)
+	}
+
+	if proxyInfo.Version != 1 {
+		t.Errorf("Expected version 1, got %d", proxyInfo.Version)
+	}
+
+	if proxyInfo.TransportProto != "TCP4" {
+		t.Errorf("Expected transport TCP4, got %s", proxyInfo.TransportProto)
+	}
+
+	// Check that the remaining data is HTTP
+	if len(processedData) == 0 {
+		t.Error("No remaining data after proxy protocol header removal")
+	} else if !strings.HasPrefix(string(processedData), "GET /") {
+		t.Errorf("Expected HTTP data, got: %s", string(processedData[:min(50, len(processedData))]))
+	} else {
+		t.Logf("✅ Remaining data is HTTP request")
+	}
+}
+
+// Test IPv6 support in Proxy Protocol v2
+func TestProxyProtocolV2IPv6(t *testing.T) {
+	// Create IPv6 test case
+	// Using RFC 3849 documentation IPv6 addresses
+	sourceIP := net.ParseIP("2001:db8::1")
+	destIP := net.ParseIP("2001:db8::2")
+	sourcePort := uint16(12345)
+	destPort := uint16(443)
+
+	var buffer bytes.Buffer
+
+	// 1. Signature (12 bytes)
+	buffer.Write([]byte(ProxyProtocolV2Prefix))
+
+	// 2. Version and Command (1 byte) - Version 2, Command PROXY
+	buffer.WriteByte(0x21) // 0010 0001 (version 2, command 1)
+
+	// 3. Address Family and Protocol (1 byte) - IPv6 TCP
+	buffer.WriteByte(0x21) // 0010 0001 (AF_INET6, STREAM)
+
+	// 4. Length (2 bytes) - 36 bytes for IPv6 addresses + ports
+	buffer.WriteByte(0x00)
+	buffer.WriteByte(0x24) // 36 bytes
+
+	// 5. Addresses and ports (36 bytes for IPv6)
+	buffer.Write(sourceIP.To16())             // Source IP (16 bytes)
+	buffer.Write(destIP.To16())               // Dest IP (16 bytes)
+	buffer.WriteByte(byte(sourcePort >> 8))   // Source port high byte
+	buffer.WriteByte(byte(sourcePort & 0xFF)) // Source port low byte
+	buffer.WriteByte(byte(destPort >> 8))     // Dest port high byte
+	buffer.WriteByte(byte(destPort & 0xFF))   // Dest port low byte
+
+	// 6. Add some TLS handshake data
+	tlsData := []byte{0x16, 0x03, 0x01, 0x00, 0x10}
+	buffer.Write(tlsData)
+
+	testData := buffer.Bytes()
+
+	// Test detection
+	detected := detectProxyProtocol(testData)
+	if !detected {
+		t.Fatalf("Proxy Protocol v2 IPv6 not detected!")
+	}
+
+	// Test parsing
+	processedData, proxyInfo, err := processProxyProtocolData(testData)
+	if err != nil {
+		t.Fatalf("IPv6 parsing error: %v", err)
+	}
+
+	if proxyInfo == nil {
+		t.Fatalf("No proxy info returned for IPv6")
+	}
+
+	if len(processedData) == 0 {
+		t.Error("No remaining data after IPv6 proxy protocol header removal")
+	}
+
+	// Verify IPv6 addresses
+	if proxyInfo.SourceAddr != "2001:db8::1" {
+		t.Errorf("Expected source IP 2001:db8::1, got %s", proxyInfo.SourceAddr)
+	}
+
+	if proxyInfo.TransportProto != "TCP6" {
+		t.Errorf("Expected transport TCP6, got %s", proxyInfo.TransportProto)
+	}
+
+	t.Logf("✅ IPv6 support verified: %s:%d -> %s:%d",
+		proxyInfo.SourceAddr, proxyInfo.SourcePort,
+		proxyInfo.DestAddr, proxyInfo.DestPort)
+}
+
 // Test with invalid data to ensure no false positives
 func TestProxyProtocolDetectionFalsePositives(t *testing.T) {
 	testCases := []struct {
