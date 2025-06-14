@@ -1,3 +1,3 @@
 module go.codexo.de/exoridus/zoraxy-proxy-protocol
 
-go 1.20 
+go 1.20
