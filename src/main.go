@@ -416,9 +416,13 @@ func detectProxyProtocol(data []byte) bool {
 		if idx := bytes.Index(data, []byte("\r\n")); idx != -1 {
 			line := string(data[:idx])
 			parts := strings.Fields(line)
-			// Valid proxy protocol v1 should have at least 6 parts
-			if len(parts) >= 6 && parts[0] == "PROXY" {
-				return true
+			// Valid proxy protocol v1 should have exactly 6 parts and valid protocol
+			if len(parts) == 6 && parts[0] == "PROXY" {
+				// Validate protocol type (TCP4, TCP6, or UNKNOWN)
+				protocol := parts[1]
+				if protocol == "TCP4" || protocol == "TCP6" || protocol == "UNKNOWN" {
+					return true
+				}
 			}
 		}
 	}
