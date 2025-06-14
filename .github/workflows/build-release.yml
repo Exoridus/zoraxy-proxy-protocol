@@ -3,7 +3,7 @@ name: Build and Release
 on: [push, pull_request, workflow_dispatch]
 
 env:
-  GO_VERSION: '1.20'  # Match your go.mod version
+  GO_VERSION: '1.21'  # Updated to match project
 
 jobs:
   test:
@@ -19,13 +19,14 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Download dependencies
-        run: go mod download
+        run: cd src && go mod download
 
       - name: Run go vet
-        run: go vet ./...
+        run: cd src && go vet ./...
 
       - name: Run go fmt check
         run: |
+          cd src
           if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
             echo "The following files are not formatted:"
             gofmt -s -l .
@@ -34,6 +35,7 @@ jobs:
 
       - name: Run tests (if any exist)
         run: |
+          cd src
           if go list ./... | grep -q .; then
             go test -v ./... || echo "No tests found or tests failed"
           else
@@ -41,63 +43,59 @@ jobs:
           fi
 
   build:
-    name: Build Multi-Platform Binaries
+    name: Build and Package
     runs-on: ubuntu-latest
     needs: test
     if: ${{ success() && github.ref_type == 'tag' }}
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            name: proxy-protocol-linux-amd64
-          - goos: linux
-            goarch: arm64
-            name: proxy-protocol-linux-arm64
-          - goos: windows
-            goarch: amd64
-            name: proxy-protocol-windows-amd64.exe
-          - goos: darwin
-            goarch: amd64
-            name: proxy-protocol-darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            name: proxy-protocol-darwin-arm64
-          - goos: freebsd
-            goarch: amd64
-            name: proxy-protocol-freebsd-amd64
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Need full history for changelog generation
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Install zip utility
+        run: sudo apt-get update && sudo apt-get install -y zip
 
-      - name: Verify dependencies
-        run: go mod verify
-
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+      - name: Extract version from tag
+        id: extract_version
         run: |
-          mkdir -p dist
-          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -o dist/${{ matrix.name }} .
+          # Remove 'v' prefix if present for version
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${VERSION}"
 
-      - name: Upload artifact
+      - name: Build all platforms and create packages
+        run: |
+          make release VERSION=${{ steps.extract_version.outputs.version }}
+
+      - name: List generated files
+        run: |
+          echo "=== Generated Build Directories ==="
+          ls -la dist/
+          echo ""
+          echo "=== Generated Packages ==="
+          ls -la dist/*.zip 2>/dev/null || echo "No zip files found"
+
+      - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: dist/${{ matrix.name }}
+          name: binaries
+          path: |
+            dist/proxy-protocol-*/
+            !dist/*.zip
+          retention-days: 7
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/*.zip
           retention-days: 7
 
   release:
@@ -122,20 +120,58 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          find artifacts -type f -name "proxy-protocol-*" -exec cp {} release-assets/ \;
+
+          # Copy packages (zip files)
+          find artifacts/packages -type f -name "*.zip" -exec cp {} release-assets/ \; 2>/dev/null || true
+
+          # Copy individual binaries from build directories
+          find artifacts/binaries -name "proxy-protocol" -o -name "proxy-protocol.exe" | while read binary; do
+            # Extract platform info from path
+            platform_dir=$(dirname "$binary" | sed 's|.*/proxy-protocol-[^/]*-\([^/]*\)/.*|\1|')
+            version_platform=$(basename $(dirname $(dirname "$binary")))
+            cp "$binary" "release-assets/proxy-protocol-${version_platform##*-}" 2>/dev/null || true
+          done
+
+          echo "=== Release Assets ==="
           ls -la release-assets/
 
-      - name: Generate checksums
+      - name: Extract version from tag
+        id: extract_version
         run: |
-          cd release-assets
-          sha256sum * > checksums.txt
-          cat checksums.txt
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Generate release notes
         id: generate_notes
         run: |
-          chmod +x .github/scripts/generate-release-notes.sh
-          ./.github/scripts/generate-release-notes.sh "${{ github.ref_name }}" "${{ github.repository }}" "${{ env.GO_VERSION }}"
+          cat > release-notes.txt << 'EOF'
+          # Zoraxy Proxy Protocol Plugin v${{ steps.extract_version.outputs.version }}
+
+          ## 📦 Plugin Packages (Ready for Zoraxy Installation)
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-linux-amd64.zip`
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-linux-arm64.zip`
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-windows-amd64.zip`
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-darwin-amd64.zip`
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-darwin-arm64.zip`
+          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-freebsd-amd64.zip`
+
+          ## 🛠 Standalone Binaries
+          - `proxy-protocol-linux-amd64`
+          - `proxy-protocol-linux-arm64`
+          - `proxy-protocol-windows-amd64.exe`
+          - `proxy-protocol-darwin-amd64`
+          - `proxy-protocol-darwin-arm64`
+          - `proxy-protocol-freebsd-amd64`
+
+          ## 🏗 Build Info
+          - **Go Version:** ${{ env.GO_VERSION }}
+          - **Built on:** Ubuntu Linux
+          - **Architecture:** Cross-platform compilation
+
+          ## 📋 Installation
+          Download the appropriate `.zip` package for your platform and install it in Zoraxy.
+          EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

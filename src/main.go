@@ -23,7 +23,9 @@ const (
 )
 
 // Version information - set via ldflags during build
-var version = "dev"
+var versionMajor = "1"
+var versionMinor = "0"
+var versionPatch = "0"
 
 //go:embed www/*
 var content embed.FS
@@ -66,17 +68,22 @@ func init() {
 }
 
 func main() {
+	// Convert string flags to integers for the plugin spec
+	major, _ := strconv.Atoi(versionMajor)
+	minor, _ := strconv.Atoi(versionMinor)
+	patch, _ := strconv.Atoi(versionPatch)
+
 	runtimeCfg, err := plugin.ServeAndRecvSpec(&plugin.IntroSpect{
 		ID:            PLUGIN_ID,
-		Name:          "Proxy Protocol Support",
+		Name:          "Proxy Protocol",
 		Author:        "Exoridus",
 		AuthorContact: "https://github.com/Exoridus",
-		Description:   "Adds support for Proxy Protocol (HAProxy compatible)",
+		Description:   "Adds support for Proxy Protocol",
 		URL:           "https://github.com/Exoridus/zoraxy-proxy-protocol",
 		Type:          plugin.PluginType_Router,
-		VersionMajor:  1,
-		VersionMinor:  0,
-		VersionPatch:  0,
+		VersionMajor:  major,
+		VersionMinor:  minor,
+		VersionPatch:  patch,
 
 		// No static capture paths as we work at network level
 		StaticCapturePaths:   []plugin.StaticCaptureRule{},
@@ -138,10 +145,13 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		status = "Enabled"
 	}
 
+	// Reconstruct version string from components
+	versionString := fmt.Sprintf("%s.%s.%s", versionMajor, versionMinor, versionPatch)
+
 	response := StatusResponse{
 		Status:  status,
 		Enabled: enabled,
-		Version: version,
+		Version: versionString,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
