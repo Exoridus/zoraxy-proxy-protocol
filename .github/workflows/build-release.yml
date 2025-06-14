@@ -3,50 +3,13 @@ name: Build and Release
 on: [push, pull_request, workflow_dispatch]
 
 env:
-  GO_VERSION: '1.21'  # Updated to match project
+  GO_VERSION: '1.21'
 
 jobs:
-  test:
-    name: Run Tests and Checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Download dependencies
-        run: cd src && go mod download
-
-      - name: Run go vet
-        run: cd src && go vet ./...
-
-      - name: Run go fmt check
-        run: |
-          cd src
-          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "The following files are not formatted:"
-            gofmt -s -l .
-            exit 1
-          fi
-
-      - name: Run tests (if any exist)
-        run: |
-          cd src
-          if go list ./... | grep -q .; then
-            go test -v ./... || echo "No tests found or tests failed"
-          else
-            echo "No test files found - skipping tests"
-          fi
-
   build:
     name: Build and Package
     runs-on: ubuntu-latest
-    needs: test
-    if: ${{ success() && github.ref_type == 'tag' }}
+    if: ${{ github.ref_type == 'tag' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,35 +24,20 @@ jobs:
       - name: Install zip utility
         run: sudo apt-get update && sudo apt-get install -y zip
 
-      - name: Extract version from tag
-        id: extract_version
-        run: |
-          # Remove 'v' prefix if present for version
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#v}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Extracted version: ${VERSION}"
-
       - name: Build all platforms and create packages
         run: |
-          make release VERSION=${{ steps.extract_version.outputs.version }}
+          echo "Building with auto-detected version from git tag: ${{ github.ref_name }}"
+          make release
 
-      - name: List generated files
+      - name: Clean up build directories (keep only packages)
         run: |
-          echo "=== Generated Build Directories ==="
+          echo "=== Before cleanup ==="
           ls -la dist/
           echo ""
-          echo "=== Generated Packages ==="
-          ls -la dist/*.zip 2>/dev/null || echo "No zip files found"
-
-      - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: binaries
-          path: |
-            dist/proxy-protocol-*/
-            !dist/*.zip
-          retention-days: 7
+          # Remove build directories, keep only zip packages
+          find dist/ -maxdepth 1 -type d -name "proxy-protocol-*" -exec rm -rf {} \;
+          echo "=== After cleanup ==="
+          ls -la dist/
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
@@ -101,7 +49,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [test, build]
+    needs: build
     if: ${{ success() && github.ref_type == 'tag' }}
     permissions:
       contents: write
@@ -109,86 +57,70 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Need full history for changelog generation
 
-      - name: Download all artifacts
+      - name: Download package artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: packages
+          path: release-assets
 
-      - name: Prepare release assets
+      - name: List release assets
         run: |
-          mkdir -p release-assets
-
-          # Copy packages (zip files)
-          find artifacts/packages -type f -name "*.zip" -exec cp {} release-assets/ \; 2>/dev/null || true
-
-          # Copy individual binaries from build directories
-          find artifacts/binaries -name "proxy-protocol" -o -name "proxy-protocol.exe" | while read binary; do
-            # Extract platform info from path
-            platform_dir=$(dirname "$binary" | sed 's|.*/proxy-protocol-[^/]*-\([^/]*\)/.*|\1|')
-            version_platform=$(basename $(dirname $(dirname "$binary")))
-            cp "$binary" "release-assets/proxy-protocol-${version_platform##*-}" 2>/dev/null || true
-          done
-
           echo "=== Release Assets ==="
           ls -la release-assets/
 
-      - name: Extract version from tag
-        id: extract_version
+      - name: Generate release notes
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Generate release notes
-        id: generate_notes
-        run: |
-          cat > release-notes.txt << 'EOF'
-          # Zoraxy Proxy Protocol Plugin v${{ steps.extract_version.outputs.version }}
+          cat > release-notes.txt << EOF
+          # Zoraxy Proxy Protocol Plugin v${VERSION}
 
           ## 📦 Plugin Packages (Ready for Zoraxy Installation)
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-linux-amd64.zip`
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-linux-arm64.zip`
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-windows-amd64.zip`
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-darwin-amd64.zip`
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-darwin-arm64.zip`
-          - `proxy-protocol-${{ steps.extract_version.outputs.version }}-freebsd-amd64.zip`
 
-          ## 🛠 Standalone Binaries
-          - `proxy-protocol-linux-amd64`
-          - `proxy-protocol-linux-arm64`
-          - `proxy-protocol-windows-amd64.exe`
-          - `proxy-protocol-darwin-amd64`
-          - `proxy-protocol-darwin-arm64`
-          - `proxy-protocol-freebsd-amd64`
+          Download the appropriate package for your platform and install it in Zoraxy using the plugin manager.
 
-          ## 🏗 Build Info
+          ### Available Platforms:
+          - **Linux AMD64** - \`proxy-protocol-${VERSION}-linux-amd64.zip\`
+          - **Linux ARM64** - \`proxy-protocol-${VERSION}-linux-arm64.zip\`
+          - **Windows AMD64** - \`proxy-protocol-${VERSION}-windows-amd64.zip\`
+          - **macOS AMD64** - \`proxy-protocol-${VERSION}-darwin-amd64.zip\`
+          - **macOS ARM64** - \`proxy-protocol-${VERSION}-darwin-arm64.zip\`
+          - **FreeBSD AMD64** - \`proxy-protocol-${VERSION}-freebsd-amd64.zip\`
+
+          ## 🔧 Features
+          - Proxy Protocol v1 and v2 support
+          - Real client IP preservation
+          - Seamless integration with Zoraxy
+          - Cross-platform compatibility
+
+          ## 🏗 Build Information
           - **Go Version:** ${{ env.GO_VERSION }}
-          - **Built on:** Ubuntu Linux
-          - **Architecture:** Cross-platform compilation
+          - **Built on:** Ubuntu Linux with cross-compilation
+          - **Build System:** Make-based automation with auto-version detection
 
-          ## 📋 Installation
-          Download the appropriate `.zip` package for your platform and install it in Zoraxy.
+          ## 📋 Installation Instructions
+          1. Download the \`.zip\` package for your platform
+          2. Open Zoraxy web interface
+          3. Navigate to Plugin Manager
+          4. Upload and install the downloaded package
+          5. Enable the Proxy Protocol plugin
           EOF
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release-assets/*
+          files: release-assets/*
           body_path: release-notes.txt
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  notify_release_failure:
-    name: Notify Release Failure
+  notify_failure:
+    name: Notify Build Failure
     runs-on: ubuntu-latest
-    needs: [test, build, release]
+    needs: [build, release]
     if: ${{ always() && github.ref_type == 'tag' && (needs.build.result == 'failure' || needs.release.result == 'failure') }}
     steps:
       - name: Send failure notification

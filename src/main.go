@@ -101,7 +101,8 @@ func main() {
 		SubscriptionsEvents: map[string]string{},
 	})
 	if err != nil {
-		fmt.Println("This is a plugin for Zoraxy and should not be run standalone\nVisit zoraxy.aroz.org to download Zoraxy.")
+		fmt.Println("This is a plugin for Zoraxy and should not be run standalone")
+		fmt.Println("For installation instructions, see: https://github.com/Exoridus/zoraxy-proxy-protocol")
 		panic(err)
 	}
 
