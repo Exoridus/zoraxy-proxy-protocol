@@ -2,6 +2,16 @@
 
 A Zoraxy plugin that adds support for the Proxy Protocol (HAProxy compatible), preserving original client IP information when traffic passes through Layer 4 proxies or load balancers.
 
+## ⚠️ **DISCLAIMER - WORK IN PROGRESS**
+
+> **🚧 This project is currently under active development and should be considered experimental.**
+> 
+> - **AI-Generated Code**: Large portions of this codebase have been generated using AI assistance and may require additional testing and refinement.
+> - **Pre-Production**: Not recommended for production environments without thorough testing.
+> - **Active Development**: Features, APIs, and functionality may change without notice.
+> 
+> **Use at your own risk** and always test thoroughly in non-production environments first.
+
 ## ✨ Features
 
 - **Proxy Protocol v1 & v2** support (text and binary formats)
