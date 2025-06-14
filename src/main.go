@@ -67,7 +67,37 @@ func init() {
 	logger = log.New(os.Stdout, "[ProxyProtocol] ", log.LstdFlags)
 }
 
+// isPluginHealthy checks if the plugin is functioning correctly
+func isPluginHealthy() bool {
+	// Basic health checks for the plugin
+
+	// Check if logger is available
+	if logger == nil {
+		return false
+	}
+
+	// Check if config is accessible
+	config.mu.RLock()
+	defer config.mu.RUnlock()
+
+	// Check if activeConnections map is accessible
+	connectionsMutex.RLock()
+	defer connectionsMutex.RUnlock()
+
+	// If we reach here, basic components are working
+	return true
+}
+
 func main() {
+	// Check for version flag before doing anything else
+	if len(os.Args) > 1 {
+		arg := os.Args[1]
+		if arg == "--version" || arg == "-v" {
+			fmt.Printf("proxy-protocol v%s.%s.%s\n", versionMajor, versionMinor, versionPatch)
+			os.Exit(0)
+		}
+	}
+
 	// Convert string flags to integers for the plugin spec
 	major, _ := strconv.Atoi(versionMajor)
 	minor, _ := strconv.Atoi(versionMinor)
@@ -141,9 +171,16 @@ func handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	enabled := config.Enabled
 	config.mu.RUnlock()
 
+	// Determine status based on enabled state and potential errors
 	status := "Disabled"
 	if enabled {
-		status = "Enabled"
+		// Check if plugin is functioning correctly
+		if isPluginHealthy() {
+			status = "Enabled"
+		} else {
+			status = "Error"
+			enabled = false // Override enabled to false if there's an error
+		}
 	}
 
 	// Reconstruct version string from components

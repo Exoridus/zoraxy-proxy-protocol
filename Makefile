@@ -99,12 +99,12 @@ build-all:
 release: clean build-all
 	$(call parse_version)
 	@echo "Creating plugin packages for version $(CURRENT_VERSION)..."
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-linux-amd64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-linux-amd64.zip $(BINARY_NAME)
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-linux-arm64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-linux-arm64.zip $(BINARY_NAME)
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-windows-amd64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-windows-amd64.zip $(BINARY_NAME)
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-amd64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-amd64.zip $(BINARY_NAME)
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-arm64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-arm64.zip $(BINARY_NAME)
-	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-freebsd-amd64 && zip -r ../$(BINARY_NAME)-$(CURRENT_VERSION)-freebsd-amd64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-linux-amd64 && zip -r ../$(BINARY_NAME)-linux-amd64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-linux-arm64 && zip -r ../$(BINARY_NAME)-linux-arm64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-windows-amd64 && zip -r ../$(BINARY_NAME)-windows-amd64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-amd64 && zip -r ../$(BINARY_NAME)-darwin-amd64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-darwin-arm64 && zip -r ../$(BINARY_NAME)-darwin-arm64.zip $(BINARY_NAME)
+	@cd $(DIST_DIR)/$(BINARY_NAME)-$(CURRENT_VERSION)-freebsd-amd64 && zip -r ../$(BINARY_NAME)-freebsd-amd64.zip $(BINARY_NAME)
 	@echo "✓ All packages created for version $(CURRENT_VERSION)"
 	@echo "✓ Release $(CURRENT_VERSION) ready in $(DIST_DIR)/"
 

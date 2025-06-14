@@ -5,208 +5,269 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="zoraxy.csrf.Token" content="{{.csrfToken}}">
     <title>Proxy Protocol Plugin</title>
+
+    <!-- Semantic UI CSS -->
+    <link rel="stylesheet" href="/semantic/semantic.min.css">
+
+    <!-- Zoraxy Main Styles -->
+    <link rel="stylesheet" href="/main.css">
+    <link rel="stylesheet" href="/darktheme.css">
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-            background-color: #f5f5f5;
+        /* Plugin-specific styles */
+        .plugin-container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 1rem;
         }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+
+        .version-info {
+            background: rgba(33, 133, 208, 0.1);
+            border-radius: 4px;
+            padding: 0.5rem;
+            display: inline-block;
+            font-size: 0.9em;
+            color: #666;
         }
-        .header {
+
+        .status-loading .icon {
+            animation: loading 1.5s linear infinite;
+        }
+
+        @keyframes loading {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .feature-list {
+            margin: 1rem 0;
+        }
+
+        .feature-list .item {
+            margin: 0.5rem 0;
+        }
+
+        .plugin-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
         }
-        .version {
+
+        .plugin-header .icon {
+            font-size: 2em;
+        }
+
+        .center-content {
             text-align: center;
-            margin-bottom: 20px;
-            color: #6c757d;
-            font-size: 14px;
-        }
-        .status {
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 5px;
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-        }
-        .status.error {
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-            color: #721c24;
-        }
-        .config-section {
-            margin: 20px 0;
-            padding: 20px;
-            border: 1px solid #dee2e6;
-            border-radius: 5px;
-        }
-        .toggle-container {
-            text-align: center;
-            margin: 20px 0;
-        }
-        .toggle-button {
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            min-width: 120px;
-            transition: background-color 0.3s ease;
-        }
-        .toggle-button.enable {
-            background-color: #28a745;
-        }
-        .toggle-button.enable:hover {
-            background-color: #218838;
-        }
-        .toggle-button.disable {
-            background-color: #dc3545;
-        }
-        .toggle-button.disable:hover {
-            background-color: #c82333;
-        }
-        .toggle-button:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-        }
-        .toggle-button:disabled:hover {
-            background-color: #6c757d;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Proxy Protocol Plugin</h1>
-            <p>HAProxy Compatible Proxy Protocol Support for Zoraxy</p>
+    <div class="ui container plugin-container">
+        <!-- Header -->
+        <div class="plugin-header">
+            <h2 class="ui header">
+                <i class="globe icon"></i>
+                <div class="content">
+                    Proxy Protocol Plugin
+                    <div class="sub header">HAProxy Compatible Proxy Protocol Support for Zoraxy</div>
+                </div>
+            </h2>
+            <div class="version-info">
+                <small id="version">Version: Loading...</small>
+            </div>
         </div>
 
-        <div class="version" id="version">
-            Version: Loading...
+        <!-- Status Alert -->
+        <div id="status" class="ui message">
+            <i class="notched circle loading icon"></i>
+            <div class="content">
+                <div class="ui header">Status: Loading...</div>
+            </div>
         </div>
 
-        <div class="status" id="status">
-            Status: Loading...
-        </div>
-
-        <div class="config-section">
-            <h3>Configuration</h3>
+        <!-- Configuration Section -->
+        <div class="ui segment">
+            <h3 class="ui header">
+                <i class="cog icon"></i>
+                <div class="content">Configuration</div>
+            </h3>
             <p>This plugin adds support for the Proxy Protocol, which allows preserving client connection information when traffic passes through a Layer 4 proxy like HAProxy.</p>
 
-            <div class="toggle-container">
-                <button id="toggleButton" class="toggle-button" onclick="toggleProxyProtocol()" disabled>
+            <div class="center-content">
+                <button id="toggleButton" class="ui loading button" onclick="toggleProxyProtocol()" disabled>
                     Loading...
                 </button>
             </div>
         </div>
 
-        <div class="config-section">
-            <h3>About</h3>
+        <!-- About Section -->
+        <div class="ui segment">
+            <h3 class="ui header">
+                <i class="info circle icon"></i>
+                <div class="content">About</div>
+            </h3>
             <p>The Proxy Protocol is used to convey connection information for connections proxied through a proxy or load balancer. It supports both version 1 (text-based) and version 2 (binary) of the protocol.</p>
-            <p>When enabled, this plugin will:</p>
-            <ul>
-                <li>Detect incoming Proxy Protocol headers</li>
-                <li>Extract original client IP and port information</li>
-                <li>Set appropriate X-Forwarded-For and X-Real-IP headers</li>
-            </ul>
+
+            <p><strong>When enabled, this plugin will:</strong></p>
+            <div class="ui list feature-list">
+                <div class="item">
+                    <i class="check circle green icon"></i>
+                    <div class="content">Detect incoming Proxy Protocol headers</div>
+                </div>
+                <div class="item">
+                    <i class="check circle green icon"></i>
+                    <div class="content">Extract original client IP and port information</div>
+                </div>
+                <div class="item">
+                    <i class="check circle green icon"></i>
+                    <div class="content">Set appropriate X-Forwarded-For and X-Real-IP headers</div>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- Semantic UI JavaScript -->
+    <script src="/semantic/semantic.min.js"></script>
+
     <script>
-        let currentEnabled = false;
+        class ProxyProtocolPlugin {
+            constructor() {
+                this.currentEnabled = false;
+                this.elements = {
+                    toggleButton: document.getElementById('toggleButton'),
+                    status: document.getElementById('status'),
+                    version: document.getElementById('version')
+                };
+                this.csrfToken = document.querySelector('meta[name="zoraxy.csrf.Token"]').getAttribute('content');
+                this.init();
+            }
 
-        function updateToggleButton(enabled, disabled = false) {
-            const button = document.getElementById('toggleButton');
-            currentEnabled = enabled;
+            init() {
+                this.loadStatus();
+            }
 
-            if (disabled) {
-                button.textContent = 'Unavailable';
-                button.className = 'toggle-button';
-                button.disabled = true;
-            } else {
-                if (enabled) {
-                    button.textContent = 'Disable';
-                    button.className = 'toggle-button disable';
+            updateToggleButton(enabled, disabled = false) {
+                this.currentEnabled = enabled;
+                const button = this.elements.toggleButton;
+                button.classList.remove('loading');
+
+                if (disabled) {
+                    button.className = 'ui button disabled';
+                    button.innerHTML = '<i class="warning icon"></i> Unavailable';
+                    button.disabled = true;
                 } else {
-                    button.textContent = 'Enable';
-                    button.className = 'toggle-button enable';
+                    button.disabled = false;
+                    if (enabled) {
+                        button.className = 'ui red button';
+                        button.innerHTML = '<i class="stop icon"></i> Disable';
+                    } else {
+                        button.className = 'ui green button';
+                        button.innerHTML = '<i class="play icon"></i> Enable';
+                    }
                 }
-                button.disabled = false;
+            }
+
+            updateStatus(enabled, error = null) {
+                const status = this.elements.status;
+                status.classList.remove('loading');
+
+                if (error) {
+                    status.className = 'ui negative message';
+                    status.innerHTML = `
+                        <i class="exclamation triangle icon"></i>
+                        <div class="content">
+                            <div class="ui header">Error</div>
+                            <p>${error}</p>
+                        </div>
+                    `;
+                } else if (enabled) {
+                    status.className = 'ui positive message';
+                    status.innerHTML = `
+                        <i class="check circle icon"></i>
+                        <div class="content">
+                            <div class="ui header">Active</div>
+                            <p>Proxy Protocol is enabled and processing requests.</p>
+                        </div>
+                    `;
+                } else {
+                    status.className = 'ui info message';
+                    status.innerHTML = `
+                        <i class="info circle icon"></i>
+                        <div class="content">
+                            <div class="ui header">Inactive</div>
+                            <p>Proxy Protocol is disabled.</p>
+                        </div>
+                    `;
+                }
+            }
+
+            async loadStatus() {
+                try {
+                    const response = await fetch('./api/status', {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': this.csrfToken
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.elements.version.textContent = `Version: ${data.version}`;
+                        this.updateToggleButton(data.enabled);
+                        this.updateStatus(data.enabled);
+                    } else {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.updateToggleButton(false, true);
+                    this.updateStatus(false, `Failed to load plugin status: ${error.message}`);
+                    this.elements.version.textContent = 'Version: Unknown';
+                }
+            }
+
+            async toggleProxyProtocol() {
+                const button = this.elements.toggleButton;
+                button.classList.add('loading');
+                button.disabled = true;
+
+                try {
+                    const response = await fetch('./api/toggle', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': this.csrfToken
+                        },
+                        body: JSON.stringify({ enable: !this.currentEnabled })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.updateToggleButton(data.enabled);
+                        this.updateStatus(data.enabled);
+                    } else {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    this.updateStatus(false, `Failed to toggle plugin: ${error.message}`);
+                    button.classList.remove('loading');
+                    button.disabled = false;
+                }
             }
         }
 
-        function loadStatus() {
-            fetch('./api/status')
-                .then(response => response.json())
-                .then(data => {
-                    const statusElement = document.getElementById('status');
-                    statusElement.textContent = `Status: ${data.status}`;
-                    statusElement.className = 'status';
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            window.proxyProtocolPlugin = new ProxyProtocolPlugin();
+        });
 
-                    const versionElement = document.getElementById('version');
-                    versionElement.textContent = `Version: ${data.version || 'Unknown'}`;
-
-                    updateToggleButton(data.enabled);
-                })
-                .catch(error => {
-                    console.error('Failed to load status:', error);
-                    const statusElement = document.getElementById('status');
-                    statusElement.textContent = 'Status: Error loading status';
-                    statusElement.className = 'status error';
-
-                    const versionElement = document.getElementById('version');
-                    versionElement.textContent = 'Version: Unknown';
-
-                    updateToggleButton(false, true);
-                });
-        }
-
+        // Make toggle function available globally
         function toggleProxyProtocol() {
-            const button = document.getElementById('toggleButton');
-            button.disabled = true;
-            button.textContent = 'Updating...';
-
-            const newEnabled = !currentEnabled;
-            const csrfToken = document.querySelector('meta[name="zoraxy.csrf.Token"]').getAttribute('content');
-
-            fetch('./api/toggle', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': csrfToken
-                },
-                body: JSON.stringify({ enabled: newEnabled })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.result === 'success') {
-                    loadStatus();
-                } else {
-                    throw new Error(data.error || 'Unknown error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error updating configuration: ' + error.message);
-                updateToggleButton(currentEnabled);
-            });
+            if (window.proxyProtocolPlugin) {
+                window.proxyProtocolPlugin.toggleProxyProtocol();
+            }
         }
-
-        loadStatus();
     </script>
 </body>
 </html>
+

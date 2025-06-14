@@ -25,14 +25,47 @@ A Zoraxy plugin that adds support for the Proxy Protocol (HAProxy compatible), p
 
 ### From GitHub Releases (Recommended)
 
-1. Download the binary for your platform from [releases](https://github.com/Exoridus/zoraxy-proxy-protocol/releases)
-2. Go to your Zoraxy installation directory (where the `zoraxy` executable is located)
-3. Create the directory: `mkdir -p plugins/proxy-protocol`
-4. Copy and rename the binary: `cp proxy-protocol-* plugins/proxy-protocol/proxy-protocol`
-5. Make it executable (Linux/macOS): `chmod +x plugins/proxy-protocol/proxy-protocol`
-6. Restart Zoraxy and configure via **Plugins** → **Proxy Protocol**
+**Installation Steps:**
+1. Download the ZIP package for your platform from [releases](https://github.com/Exoridus/zoraxy-proxy-protocol/releases)
+2. Extract the ZIP file to your Zoraxy plugins directory:
+   ```bash
+   unzip proxy-protocol.zip -d /path/to/zoraxy/plugins/
+   ```
+3. The plugin is automatically ready - no restart required!
 
-> **Note:** Place the executable at `{zoraxy-directory}/plugins/proxy-protocol/proxy-protocol`
+**Platform-Specific Downloads:**
+
+**Linux AMD64:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-linux-amd64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+**Linux ARM64:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-linux-arm64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+**Windows AMD64:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-windows-amd64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+**macOS Intel:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-darwin-amd64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+**macOS Apple Silicon:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-darwin-arm64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+**FreeBSD AMD64:**
+```bash
+wget -qO- "https://github.com/Exoridus/zoraxy-proxy-protocol/releases/latest/download/proxy-protocol-freebsd-amd64.zip" | unzip - -d "/path/to/zoraxy/plugins/"
+```
+
+> **Note:** The ZIP contains the correct directory structure with executable permissions preserved.
 
 ### Directory Structure
 
@@ -42,8 +75,23 @@ After installation, your Zoraxy directory will look like this:
 ├── zoraxy                ← Main Zoraxy executable
 ├── plugins/
 │   └── proxy-protocol/
-│       └── proxy-protocol ← Plugin executable goes here
+│       ├── proxy-protocol ← Plugin executable (auto-extracted)
+│       └── icon.png      ← Plugin icon (auto-extracted)
 └── ... (other files)
+```
+
+### Using the Makefile (Advanced)
+
+If you have the source code, you can use the built-in install command:
+```bash
+git clone https://github.com/Exoridus/zoraxy-proxy-protocol.git
+cd zoraxy-proxy-protocol
+
+# Auto-detect Zoraxy installation and install
+make install
+
+# Or specify custom Zoraxy directory
+make install ZORAXY_DIR=/path/to/zoraxy
 ```
 
 ### From Source
@@ -51,8 +99,8 @@ After installation, your Zoraxy directory will look like this:
 ```bash
 git clone https://github.com/Exoridus/zoraxy-proxy-protocol.git
 cd zoraxy-proxy-protocol
-make build-linux  # or make build for current platform
-# Then follow the installation steps above
+make release  # Creates ZIP packages in dist/
+# Then use the ZIP installation method above
 ```
 
 ## 📖 How It Works
